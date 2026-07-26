@@ -1,279 +1,181 @@
-# OpenCode Multi-Agent Workflow: A Simple Example
+# OpenCode Workflow Starter
 
-This is about **OpenCode**: https://opencode.ai/
+This repo is now a small, reusable starter for **OpenCode** workflows.
 
-The easiest way to understand OpenCode is this:
+It gives you:
 
-> OpenCode lets you describe your AI engineering workflow in config, then use different agents for different jobs.
+- a primary `workflow` agent,
+- four focused subagents,
+- a few ready-to-use slash commands,
+- a copy-pasteable setup you can drop into a new project.
 
-Instead of saying:
+The goal is simple:
 
-> "Claude, understand the problem, write the plan, edit the code, test it, review it, and tell me if it is safe."
+> make OpenCode feel like a repeatable engineering workflow, not a one-off chat prompt.
 
-You can say:
+## What Is In Here
 
-> "Planner, understand the problem. Builder, make the change. Reviewer, criticize the diff."
+These files are the starter:
 
-That is the whole idea.
+- [opencode.jsonc](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/opencode.jsonc)
+- [.opencode/WORKFLOW.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/WORKFLOW.md)
+- [.opencode/prompts/workflow.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/prompts/workflow.md)
+- [.opencode/prompts/feature-planner.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/prompts/feature-planner.md)
+- [.opencode/prompts/feature-builder.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/prompts/feature-builder.md)
+- [.opencode/prompts/feature-tester.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/prompts/feature-tester.md)
+- [.opencode/prompts/feature-reviewer.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/prompts/feature-reviewer.md)
+- [.opencode/commands/feature.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/commands/feature.md)
+- [.opencode/commands/fix.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/commands/fix.md)
+- [.opencode/commands/spec.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/commands/spec.md)
+- [.opencode/commands/review-diff.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/commands/review-diff.md)
+- [.opencode/commands/test-target.md](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode/commands/test-target.md)
 
-## The Example
+## How The Workflow Works
 
-Imagine this task:
-
-> Add email validation to a signup form.
-
-A normal one-agent flow looks like this:
-
-```text
-User -> One AI model -> Plan + Code + Test + Review
-```
-
-The problem is that one model is doing everything in the same context. It may rush into code, forget the original goal, skip tests, or review its own work too kindly.
-
-An OpenCode multi-agent flow can look like this:
-
-```text
-User
-  -> workflow agent decides the sequence
-  -> planner agent reads and plans, but cannot edit
-  -> builder agent edits the code
-  -> reviewer agent checks the diff, but cannot edit
-```
-
-This is useful because each agent has a smaller responsibility.
-
-## The Three-Agent Version
-
-Start with only three agents:
-
-| Agent | Job | Allowed to edit? | Good model type |
-|---|---|---:|---|
-| `planner` | Understand the request and make a small plan | No | Claude/reasoning model |
-| `builder` | Implement only the approved plan | Yes | Codex/coding model |
-| `reviewer` | Review the final diff and find risks | No | Gemini/Codex/Claude review model |
-
-Do not start with seven agents. Seven stages are useful later. Three agents are enough to learn the concept.
-
-## Minimal OpenCode Config
-
-Create this file in your project root:
+The sequence is:
 
 ```text
-opencode.jsonc
+/feature or /fix
+  -> workflow
+  -> feature-planner
+  -> feature-builder
+  -> feature-tester
+  -> feature-reviewer
 ```
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "default_agent": "workflow",
+Each agent has one job:
 
-  "agent": {
-    "workflow": {
-      "description": "Coordinates a simple plan -> build -> review workflow.",
-      "mode": "primary",
-      "model": "anthropic/<your-claude-model>",
-      "prompt": "You coordinate work. For every feature request: first ask planner to create a small plan, then ask builder to implement that plan, then ask reviewer to review the diff. Keep the task small.",
-      "permission": {
-        "task": {
-          "*": "deny",
-          "planner": "allow",
-          "builder": "ask",
-          "reviewer": "allow"
-        },
-        "edit": "deny",
-        "bash": "ask"
-      }
-    },
+| Agent | Role | Why it exists |
+|---|---|---|
+| `workflow` | Orchestrates the sequence | Keeps the process consistent |
+| `feature-planner` | Makes a small plan | Prevents premature coding |
+| `feature-builder` | Edits code | Keeps implementation focused |
+| `feature-tester` | Runs targeted checks | Gives proof, not just opinion |
+| `feature-reviewer` | Critiques the diff | Catches things the builder missed |
 
-    "planner": {
-      "description": "Reads the codebase and writes a small implementation plan. It never edits files.",
-      "mode": "subagent",
-      "model": "anthropic/<your-claude-model>",
-      "prompt": "You are the planner. Understand the user's request and the existing code. Return: goal, files likely involved, small implementation steps, and tests to run. Do not edit files.",
-      "tools": {
-        "write": false,
-        "edit": false,
-        "bash": true
-      },
-      "permission": {
-        "bash": {
-          "*": "ask",
-          "rg *": "allow",
-          "ls *": "allow",
-          "git status *": "allow",
-          "git diff *": "allow"
-        }
-      }
-    },
+This is more useful than one giant prompt because the responsibilities are separated.
 
-    "builder": {
-      "description": "Implements the approved plan. It can edit files.",
-      "mode": "subagent",
-      "model": "openai/<your-coding-model>",
-      "prompt": "You are the builder. Implement only the plan you are given. Keep the change small. Follow the existing code style. Do not refactor unrelated code. After editing, summarize what changed.",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true
-      },
-      "permission": {
-        "edit": "ask",
-        "bash": {
-          "*": "ask",
-          "rg *": "allow",
-          "git diff *": "allow",
-          "npm test *": "allow",
-          "pnpm test *": "allow"
-        }
-      }
-    },
+## How To Use This In A New Project
 
-    "reviewer": {
-      "description": "Reviews the diff for bugs, missing tests, and unnecessary complexity. It never edits files.",
-      "mode": "subagent",
-      "model": "google/<your-gemini-or-review-model>",
-      "prompt": "You are the reviewer. Review the current diff only. Look for correctness issues, edge cases, missing tests, and unnecessary complexity. Do not edit files. If the change is good, say so clearly.",
-      "tools": {
-        "write": false,
-        "edit": false,
-        "bash": true
-      },
-      "permission": {
-        "bash": {
-          "*": "ask",
-          "git diff *": "allow",
-          "git status *": "allow",
-          "rg *": "allow"
-        }
-      }
-    }
-  },
+In any project where you want the workflow:
 
-  "command": {
-    "feature": {
-      "description": "Run a small feature through planner, builder, and reviewer.",
-      "agent": "workflow",
-      "template": "Run this through planner, builder, and reviewer. Keep the change small: $ARGUMENTS"
-    }
-  }
-}
+1. Copy [opencode.jsonc](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/opencode.jsonc) into the project root.
+2. Copy the entire [.opencode](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/.opencode) folder into the project root.
+3. Run `opencode models` to see the model IDs available in your setup.
+4. Open [opencode.jsonc](/Users/rakeshcheekatimala/Desktop/Learnings/open-code-workflow/opencode.jsonc) and optionally uncomment the model overrides for planner, builder, tester, and reviewer.
+5. Start OpenCode from that project root.
+
+```bash
+cd /path/to/your-project
+opencode
 ```
 
-Replace the model placeholders with the model names from your OpenCode setup. The important part is the shape:
+Then run one of these:
 
-- `workflow` is the main agent you talk to.
-- `planner` is a read-only thinking agent.
-- `builder` is the only agent that should edit code.
-- `reviewer` is a read-only critic.
-- `permission.task` controls which subagents the workflow agent can call.
-- `tools` and `permission` control what each agent can do.
+```text
+/feature Add email validation to the signup form. Reject empty emails and invalid email format.
+/fix The settings page crashes when the API returns an empty list.
+/spec Add pagination to the users table.
+/review-diff
+/test-target signup form validation
+```
 
-## How You Would Use It
+## What To Expect During A Feature Run
 
-Open your project:
+For `/feature Add email validation...`, a healthy run looks like this:
+
+1. `workflow` asks `feature-planner` to inspect the repo.
+2. `feature-planner` returns a goal, likely files, steps, tests, and risks.
+3. `workflow` shrinks the work to one slice if needed.
+4. `feature-builder` edits the smallest set of files.
+5. `feature-tester` runs the smallest relevant test or tells you what manual check is needed.
+6. `feature-reviewer` inspects the diff and calls out issues or says there are no major issues.
+7. `workflow` summarizes what changed, how it was tested, and what to do next.
+
+That is the whole workflow.
+
+## How To Smoke-Test This In A Brand-New Project
+
+Use a tiny toy project first. Do not start with a real production repo.
+
+Example:
+
+```bash
+mkdir opencode-smoke-test
+cd opencode-smoke-test
+git init
+printf 'function isValidEmail(email) { return true }\nmodule.exports = { isValidEmail }\n' > email.js
+printf 'const { isValidEmail } = require(\"./email\")\nconsole.log(isValidEmail(process.argv[2]))\n' > index.js
+```
+
+Then copy in:
+
+- `opencode.jsonc`
+- `.opencode/`
+
+Then start OpenCode:
 
 ```bash
 opencode
 ```
 
-Then run:
+Now run:
 
 ```text
-/feature Add email validation to the signup form. Reject empty emails and invalid email format.
+/feature Update email.js so it rejects empty strings and invalid email formats. Keep it to one small slice.
 ```
 
-What should happen conceptually:
+You are looking for this behavior:
 
-```text
-1. workflow receives the request
-2. workflow asks planner to inspect the code and produce a plan
-3. workflow asks builder before editing
-4. builder changes the smallest needed code
-5. builder runs focused tests if available
-6. workflow asks reviewer to inspect the diff
-7. reviewer reports issues or says the change is safe enough
-```
+- planner identifies `email.js` as the main file,
+- builder changes only `email.js` or the minimum needed files,
+- tester suggests a focused check,
+- reviewer comments on edge cases like whitespace or malformed input.
 
-## Why This Is Better Than One Big Prompt
+If that works, the starter is doing its job.
 
-The benefit is not that "many agents are smarter." That is the wrong mental model.
+## How To Make It Reusable For Anyone Using OpenCode
 
-The benefit is that the workflow has **separation of duties**:
+The easiest reusable shape is:
 
-- The planner cannot accidentally edit files.
-- The builder has a narrow implementation target.
-- The reviewer is not the same role that wrote the code.
-- The workflow agent controls the sequence.
-- The config makes the process repeatable for the team.
+1. keep `opencode.jsonc` small,
+2. keep prompts in `.opencode/prompts/`,
+3. keep commands in `.opencode/commands/`,
+4. keep agent responsibilities narrow,
+5. keep model routing optional.
 
-For a senior engineer, this means fewer messy patches and clearer checkpoints.
+That is why this starter does not hardcode model IDs by default. Different people will have different providers and model names available. The starter should run with a user's current OpenCode defaults, and then they can opt into model routing later.
 
-For an engineering manager, this means the team can describe the process:
+A good reuse pattern is:
 
-```text
-We plan before code.
-We keep implementation small.
-We review before merge.
-We restrict which agents can edit.
-We can swap models without changing the workflow.
-```
+- use Claude or another strong reasoning model for `feature-planner`,
+- use Codex or another coding-heavy model for `feature-builder`,
+- use a cheaper or faster model for `feature-tester`,
+- use Gemini, Claude, or another critical model for `feature-reviewer`.
 
-## When This Is Worth It
+## Small DX Improvements You Can Add Next
 
-Use this workflow for:
+Once this starter feels good, add only a few more things:
 
-- features that touch multiple files,
-- refactors,
-- bug fixes where correctness matters,
-- work that needs review discipline,
-- teams that want repeatable AI coding practices.
+- a `/refactor` command for small cleanup work,
+- a `/ship-note` command for release summaries,
+- a language-specific test command set if your team is mostly one stack,
+- repo-specific instructions via `instructions`,
+- tighter `bash` permissions if you want stronger guardrails.
 
-Do not use it for:
+Do not add more ceremony until this basic loop saves you time.
 
-- renaming one variable,
-- changing one string,
-- quick throwaway prototypes,
-- tasks where the agent handoff costs more than the code change.
+## Current Limitations
 
-The practical rule:
+- The starter cannot guess your exact model IDs; check them with `opencode models`.
+- Some repos will need stack-specific test commands added to the tester permissions.
+- A huge feature request still needs human judgment to break it into slices.
 
-> If a bad patch would waste more time than the workflow costs, use the workflow.
+## Verified Against Current OpenCode Docs
 
-## How To Extend To Seven Stages
+I wrote this starter from scratch and checked the current OpenCode docs for the config shape:
 
-Once the three-agent version makes sense, expand it like this:
-
-| Stage | Agent | Purpose |
-|---|---|---|
-| Define | `definer` | Clarify the request and success criteria |
-| Plan | `planner` | Break the work into small steps |
-| Build | `builder` | Make the code change |
-| Test | `tester` | Run tests and explain failures |
-| Review | `reviewer` | Critique the diff |
-| Simplify | `simplifier` | Remove accidental complexity |
-| Ship | `shipper` | Summarize what changed and remaining risks |
-
-But start with three. The point is to learn the workflow, not to create ceremony.
-
-## The Cleanest Explanation
-
-OpenCode is useful because it turns this:
-
-```text
-One model does everything.
-```
-
-into this:
-
-```text
-One workflow coordinates multiple focused agents.
-```
-
-That is the concept you want to get your hands dirty with locally.
-
-## References Used For Config Shape
-
-This example is written from scratch. I only checked the official OpenCode docs for current config concepts:
-
-- https://opencode.ai/docs/config/
-- https://opencode.ai/docs/agents/
+- [Config](https://opencode.ai/docs/config/)
+- [Agents](https://opencode.ai/docs/agents/)
+- [Commands](https://opencode.ai/docs/commands/)
+- [Permissions](https://opencode.ai/docs/permissions/)
